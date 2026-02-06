@@ -418,17 +418,14 @@ virt-customize -q -a "$WORK_FILE" --run-command "echo '/swapfile none swap sw 0 
 }
 msg_ok "Configured swap fstab entry"
 
-# Install Node.js 24
-msg_info "Installing Node.js 24"
+# Node.js 24 will be installed in first-boot script (after disk resize)
+# Setup NodeSource repository now (just adds repo config, doesn't install)
+msg_info "Configuring NodeSource repository"
 virt-customize -q -a "$WORK_FILE" --run-command "curl -fsSL https://deb.nodesource.com/setup_24.x | bash -" || {
   msg_error "Failed to setup NodeSource repository"
   exit 1
 }
-virt-customize -q -a "$WORK_FILE" --install nodejs || {
-  msg_error "Failed to install Node.js"
-  exit 1
-}
-msg_ok "Installed Node.js 24"
+msg_ok "Configured NodeSource repository"
 
 # Create openclaw user
 msg_info "Creating dedicated OpenClaw user"
@@ -487,6 +484,22 @@ if ! curl -s --connect-timeout 5 https://registry.npmjs.org > /dev/null; then
   exit 1
 fi
 echo "[$(date)] Network connectivity verified"
+
+# Install Node.js 24 (disk is now resized, so we have space)
+echo "[$(date)] Installing Node.js 24..."
+apt-get update || {
+  echo "[$(date)] ERROR: Failed to update apt" >&2
+  exit 1
+}
+apt-get install -y nodejs || {
+  echo "[$(date)] ERROR: Failed to install Node.js" >&2
+  exit 1
+}
+if ! command -v node &>/dev/null; then
+  echo "[$(date)] ERROR: Node.js installation failed - command not found" >&2
+  exit 1
+fi
+echo "[$(date)] Node.js installed: $(node --version)"
 
 # Install OpenClaw via npm
 echo "[$(date)] Installing OpenClaw from npm..."
