@@ -410,25 +410,13 @@ virt-customize -q -a "$WORK_FILE" --install qemu-guest-agent,curl,git,build-esse
 }
 msg_ok "Installed base packages"
 
-# Create 2GB swap fstab entry (OS will activate on boot)
-msg_info "Configuring 2GB swap file"
-virt-customize -q -a "$WORK_FILE" --run-command "fallocate -l 2G /swapfile" || {
-  msg_error "Failed to create swap file"
-  exit 1
-}
-virt-customize -q -a "$WORK_FILE" --run-command "chmod 600 /swapfile" || {
-  msg_error "Failed to set swap permissions"
-  exit 1
-}
-virt-customize -q -a "$WORK_FILE" --run-command "mkswap /swapfile" || {
-  msg_error "Failed to format swap"
-  exit 1
-}
+# Add swap fstab entry (swap file will be created on first boot after disk resize)
+msg_info "Configuring swap fstab entry"
 virt-customize -q -a "$WORK_FILE" --run-command "echo '/swapfile none swap sw 0 0' >> /etc/fstab" || {
   msg_error "Failed to add swap to fstab"
   exit 1
 }
-msg_ok "Configured 2GB swap file"
+msg_ok "Configured swap fstab entry"
 
 # Install Node.js 24
 msg_info "Installing Node.js 24"
@@ -472,6 +460,26 @@ set -euo pipefail
 exec > >(tee /var/log/openclaw-install.log) 2>&1
 
 echo "[$(date)] Starting OpenClaw installation"
+
+# Create 2GB swap file (disk is now resized, so we have space)
+echo "[$(date)] Creating 2GB swap file..."
+fallocate -l 2G /swapfile || {
+  echo "[$(date)] ERROR: Failed to create swap file" >&2
+  exit 1
+}
+chmod 600 /swapfile || {
+  echo "[$(date)] ERROR: Failed to set swap permissions" >&2
+  exit 1
+}
+mkswap /swapfile || {
+  echo "[$(date)] ERROR: Failed to format swap" >&2
+  exit 1
+}
+swapon /swapfile || {
+  echo "[$(date)] ERROR: Failed to activate swap" >&2
+  exit 1
+}
+echo "[$(date)] Swap file created and activated"
 
 # Verify network connectivity (fail immediately if no network)
 if ! curl -s --connect-timeout 5 https://registry.npmjs.org > /dev/null; then
