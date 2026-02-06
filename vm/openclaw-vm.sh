@@ -37,6 +37,7 @@ OS_VERSION="24.04"
 OS_CODENAME="noble"
 OS_DISPLAY="Ubuntu 24.04 LTS"
 THIN="discard=on,ssd=1,"
+DIAGNOSTICS="${DIAGNOSTICS:-no}"  # Initialize to prevent unbound variable errors
 
 # ==============================================================================
 # ERROR HANDLING & CLEANUP
@@ -299,7 +300,6 @@ fi
 check_root
 arch_check
 pve_check
-ssh_check
 start_script
 post_to_api_vm
 
