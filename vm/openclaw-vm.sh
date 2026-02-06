@@ -408,6 +408,8 @@ virt-customize -q -a "$WORK_FILE" --install qemu-guest-agent,curl,git,build-esse
   msg_error "Failed to install base packages"
   exit 1
 }
+# Clean apt cache to free space in the small cloud image filesystem
+virt-customize -q -a "$WORK_FILE" --run-command "apt-get clean && rm -rf /var/lib/apt/lists/*" || true
 msg_ok "Installed base packages"
 
 # Add swap fstab entry (swap file will be created on first boot after disk resize)
@@ -417,15 +419,6 @@ virt-customize -q -a "$WORK_FILE" --run-command "echo '/swapfile none swap sw 0 
   exit 1
 }
 msg_ok "Configured swap fstab entry"
-
-# Node.js 24 will be installed in first-boot script (after disk resize)
-# Setup NodeSource repository now (just adds repo config, doesn't install)
-msg_info "Configuring NodeSource repository"
-virt-customize -q -a "$WORK_FILE" --run-command "curl -fsSL https://deb.nodesource.com/setup_24.x | bash -" || {
-  msg_error "Failed to setup NodeSource repository"
-  exit 1
-}
-msg_ok "Configured NodeSource repository"
 
 # Create openclaw user
 msg_info "Creating dedicated OpenClaw user"
@@ -485,16 +478,20 @@ if ! curl -s --connect-timeout 5 https://registry.npmjs.org > /dev/null; then
 fi
 echo "[$(date)] Network connectivity verified"
 
-# Install Node.js 24 (disk is now resized, so we have space)
-echo "[$(date)] Installing Node.js 24..."
-apt-get update || {
-  echo "[$(date)] ERROR: Failed to update apt" >&2
+# Setup NodeSource repository and install Node.js 24 (disk is now resized, so we have space)
+echo "[$(date)] Setting up NodeSource repository..."
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash - || {
+  echo "[$(date)] ERROR: Failed to setup NodeSource repository" >&2
   exit 1
 }
+echo "[$(date)] Installing Node.js 24..."
 apt-get install -y nodejs || {
   echo "[$(date)] ERROR: Failed to install Node.js" >&2
   exit 1
 }
+# Clean apt cache to free disk space before npm install
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 if ! command -v node &>/dev/null; then
   echo "[$(date)] ERROR: Node.js installation failed - command not found" >&2
   exit 1
