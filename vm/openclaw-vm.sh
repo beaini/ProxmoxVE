@@ -783,7 +783,7 @@ msg_info "Attaching EFI and root disk"
 
 qm set "$VMID" \
   --efidisk0 ${STORAGE}:0,efitype=4m \
-  --scsi0 ${DISK_REF_IMPORTED},${DISK_CACHE}${THIN}ssd=1,discard=on \
+  --scsi0 ${DISK_REF_IMPORTED},${DISK_CACHE}${THIN%,} \
   --boot order=scsi0 \
   --serial0 socket >/dev/null
 
