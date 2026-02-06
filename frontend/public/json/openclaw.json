@@ -1,0 +1,57 @@
+{
+  "name": "OpenClaw",
+  "slug": "openclaw",
+  "categories": [
+    20,
+    22
+  ],
+  "date_created": "2026-02-06",
+  "type": "vm",
+  "updateable": false,
+  "privileged": false,
+  "interface_port": null,
+  "documentation": "https://github.com/openclaw/openclaw",
+  "website": "https://github.com/openclaw/openclaw",
+  "logo": "https://cdn.jsdelivr.net/gh/selfhst/icons@main/webp/openclaw.webp",
+  "config_path": "/home/openclaw/.openclaw/openclaw.json",
+  "description": "OpenClaw is an open-source AI agent with shell access, file system access, and persistent memory. Connects via Telegram, voice agents, or web interfaces. Runs in VM with hypervisor isolation for security.",
+  "install_methods": [
+    {
+      "type": "default",
+      "script": "vm/openclaw-vm.sh",
+      "resources": {
+        "cpu": 2,
+        "ram": 4096,
+        "hdd": 32,
+        "os": "ubuntu",
+        "version": "24.04"
+      }
+    }
+  ],
+  "default_credentials": {
+    "username": null,
+    "password": null
+  },
+  "notes": [
+    {
+      "text": "OpenClaw has shell access and runs with sudo privileges within the VM. Hypervisor isolation provides security from the Proxmox host.",
+      "type": "warning"
+    },
+    {
+      "text": "This creates a VM (not LXC container) for enhanced security isolation required by AI agents with shell access.",
+      "type": "info"
+    },
+    {
+      "text": "OpenClaw is installed on first boot. After VM boots, SSH in and run 'sudo -u openclaw openclaw onboard' to configure AI provider and start the service.",
+      "type": "warning"
+    },
+    {
+      "text": "The gateway binds to 127.0.0.1 (loopback) and is NOT exposed to the network. Communication with Telegram is outgoing only.",
+      "type": "info"
+    },
+    {
+      "text": "Setup instructions are available at /home/openclaw/SETUP_INSTRUCTIONS.txt inside the VM.",
+      "type": "info"
+    }
+  ]
+}
