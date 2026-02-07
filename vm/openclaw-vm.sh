@@ -490,15 +490,21 @@ echo "[$(date)] Network connectivity verified"
 echo "[$(date)] Setting up NodeSource repository..."
 if curl -fsSL https://deb.nodesource.com/setup_24.x | bash -; then
   echo "[$(date)] NodeSource repository configured"
+  # Install nodejs from NodeSource (includes npm)
+  echo "[$(date)] Installing Node.js 24 (includes npm)..."
+  apt-get install -y nodejs || {
+    echo "[$(date)] ERROR: Failed to install Node.js from NodeSource" >&2
+    exit 1
+  }
 else
-  echo "[$(date)] WARNING: NodeSource setup failed, will use Ubuntu nodejs package" >&2
+  echo "[$(date)] WARNING: NodeSource setup failed, falling back to Ubuntu nodejs package" >&2
+  # Fallback to Ubuntu packages
+  echo "[$(date)] Installing Node.js and npm from Ubuntu repositories..."
+  apt-get install -y nodejs npm || {
+    echo "[$(date)] ERROR: Failed to install Node.js/npm from Ubuntu" >&2
+    exit 1
+  }
 fi
-
-echo "[$(date)] Installing Node.js and npm..."
-apt-get install -y nodejs npm || {
-  echo "[$(date)] ERROR: Failed to install Node.js/npm" >&2
-  exit 1
-}
 
 # Clean apt cache to free disk space before npm install
 apt-get clean
