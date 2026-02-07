@@ -29,10 +29,14 @@
     }
   ],
   "default_credentials": {
-    "username": null,
-    "password": null
+    "username": "root",
+    "password": "Auto-generated (displayed after installation)"
   },
   "notes": [
+    {
+      "text": "A random root password is generated automatically and displayed after VM creation. Save it to access the VM via SSH.",
+      "type": "warning"
+    },
     {
       "text": "OpenClaw has shell access and runs with sudo privileges within the VM. Hypervisor isolation provides security from the Proxmox host.",
       "type": "warning"

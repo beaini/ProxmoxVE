@@ -29,6 +29,7 @@ var_version="24.04"
 
 GEN_MAC=02:$(openssl rand -hex 5 | awk '{print toupper($0)}' | sed 's/\(..\)/\1:/g; s/.$//')
 RANDOM_UUID="$(cat /proc/sys/kernel/random/uuid)"
+ROOT_PASSWORD="$(openssl rand -base64 16 | tr -d '/+=' | head -c 16)"
 METHOD=""
 DISK_SIZE="32G"
 USE_CLOUD_INIT="yes"  # Ubuntu requires cloud-init
@@ -797,16 +798,16 @@ if [ "$USE_CLOUD_INIT" = "yes" ]; then
   msg_info "Configuring Cloud-Init"
   qm set "$VMID" --ide2 ${STORAGE}:cloudinit >/dev/null
   
-  if [ -n "${CLOUDINIT_CONFIG_USER:-}" ] && [ -n "${CLOUDINIT_CONFIG_PASSWORD:-}" ]; then
-    qm set "$VMID" --ciuser "${CLOUDINIT_CONFIG_USER}" --cipassword "${CLOUDINIT_CONFIG_PASSWORD}" >/dev/null
-  fi
+  # Set root user with auto-generated password
+  qm set "$VMID" --ciuser "root" --cipassword "${ROOT_PASSWORD}" >/dev/null
   
+  # Also add SSH keys if configured in advanced mode
   if [ -n "${CLOUDINIT_CONFIG_SSH_KEYS:-}" ]; then
     qm set "$VMID" --sshkeys "${CLOUDINIT_CONFIG_SSH_KEYS}" >/dev/null
   fi
   
   qm set "$VMID" --ipconfig0 ip=dhcp >/dev/null
-  msg_ok "Configured Cloud-Init"
+  msg_ok "Configured Cloud-Init with auto-generated password"
 fi
 
 # ==============================================================================
@@ -879,9 +880,13 @@ echo -e "${TAB}• Memory: ${RAM_SIZE}MB (Ballooning disabled)"
 echo -e "${TAB}• Disk: ${DISK_SIZE}"
 echo -e "${TAB}• Gateway: 127.0.0.1:18789 (loopback only)"
 echo -e ""
+echo -e "${INFO}${RD}${BOLD}SSH Login Credentials (SAVE THESE!):${CL}"
+echo -e "${TAB}${BOLD}Username: ${BGN}root${CL}"
+echo -e "${TAB}${BOLD}Password: ${BGN}${ROOT_PASSWORD}${CL}"
+echo -e ""
 echo -e "${INFO}${YW}Next Steps:${CL}"
-echo -e "${TAB}${GN}1.${CL} Configure Cloud-Init in Proxmox UI (set password/SSH keys)"
-echo -e "${TAB}${GN}2.${CL} SSH into the VM after it boots"
+echo -e "${TAB}${GN}1.${CL} Wait for VM to boot and get IP address from Proxmox console"
+echo -e "${TAB}${GN}2.${CL} SSH into the VM: ${YW}ssh root@<VM-IP>${CL}"
 echo -e "${TAB}${GN}3.${CL} Read setup instructions: ${YW}cat /home/openclaw/SETUP_INSTRUCTIONS.txt${CL}"
 echo -e "${TAB}${GN}4.${CL} Configure AI provider: ${YW}sudo -u openclaw openclaw onboard${CL}"
 echo -e "${TAB}${GN}5.${CL} Setup Telegram bot and pair your account"
