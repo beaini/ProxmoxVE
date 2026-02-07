@@ -446,108 +446,81 @@ msg_info "Creating first-boot OpenClaw installation script"
 virt-customize -q -a "$WORK_FILE" --run-command 'cat > /root/install-openclaw.sh << "EOINSTALL"
 #!/bin/bash
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 
-# Log to file but show errors
+# Log to file
 exec > >(tee /var/log/openclaw-install.log) 2>&1
 
-echo "[$(date)] Starting OpenClaw installation"
+log() { echo "[$(date)] $1"; }
+fail() { echo "[$(date)] ERROR: $1" >&2; exit 1; }
+
+log "Starting OpenClaw installation"
 
 # Create 2GB swap file (disk is now resized, so we have space)
-echo "[$(date)] Creating 2GB swap file..."
-fallocate -l 2G /swapfile || {
-  echo "[$(date)] ERROR: Failed to create swap file" >&2
-  exit 1
-}
-chmod 600 /swapfile || {
-  echo "[$(date)] ERROR: Failed to set swap permissions" >&2
-  exit 1
-}
-mkswap /swapfile || {
-  echo "[$(date)] ERROR: Failed to format swap" >&2
-  exit 1
-}
-swapon /swapfile || {
-  echo "[$(date)] ERROR: Failed to activate swap" >&2
-  exit 1
-}
-echo "[$(date)] Swap file created and activated"
+log "Creating 2GB swap file..."
+fallocate -l 2G /swapfile || fail "Failed to create swap file"
+chmod 600 /swapfile || fail "Failed to set swap permissions"
+mkswap /swapfile >/dev/null || fail "Failed to format swap"
+swapon /swapfile || fail "Failed to activate swap"
+log "Swap file created and activated"
 
 # Sync system clock (critical for apt repository validation)
-echo "[$(date)] Syncing system clock..."
+log "Syncing system clock..."
 systemctl restart systemd-timesyncd
 timedatectl set-ntp true
 sleep 2
-echo "[$(date)] System time after sync: $(date)"
+log "System time after sync: $(date)"
 
 # Verify network connectivity (fail immediately if no network)
 if ! curl -s --connect-timeout 5 https://registry.npmjs.org > /dev/null; then
-  echo "[$(date)] ERROR: No network connectivity" >&2
-  exit 1
+  fail "No network connectivity"
 fi
-echo "[$(date)] Network connectivity verified"
+log "Network connectivity verified"
 
 # Setup NodeSource repository and install Node.js 24 (disk is now resized, so we have space)
-echo "[$(date)] Setting up NodeSource repository..."
-if curl -fsSL https://deb.nodesource.com/setup_24.x | bash -; then
-  echo "[$(date)] NodeSource repository configured"
-  # Install nodejs from NodeSource (includes npm)
-  echo "[$(date)] Installing Node.js 24 (includes npm)..."
-  apt-get install -y nodejs || {
-    echo "[$(date)] ERROR: Failed to install Node.js from NodeSource" >&2
-    exit 1
-  }
+log "Setting up NodeSource repository..."
+if curl -fsSL https://deb.nodesource.com/setup_24.x 2>/dev/null | bash - >/dev/null 2>&1; then
+  log "NodeSource repository configured"
+  log "Installing Node.js 24 (includes npm)..."
+  apt-get -qq install -y nodejs >/dev/null || fail "Failed to install Node.js from NodeSource"
 else
-  echo "[$(date)] WARNING: NodeSource setup failed, falling back to Ubuntu nodejs package" >&2
-  # Fallback to Ubuntu packages
-  echo "[$(date)] Installing Node.js and npm from Ubuntu repositories..."
-  apt-get install -y nodejs npm || {
-    echo "[$(date)] ERROR: Failed to install Node.js/npm from Ubuntu" >&2
-    exit 1
-  }
+  log "WARNING: NodeSource setup failed, falling back to Ubuntu nodejs package"
+  log "Installing Node.js and npm from Ubuntu repositories..."
+  apt-get -qq install -y nodejs npm >/dev/null || fail "Failed to install Node.js/npm from Ubuntu"
 fi
 
 # Clean apt cache to free disk space before npm install
-apt-get clean
+apt-get -qq clean >/dev/null
 rm -rf /var/lib/apt/lists/*
 
 # Verify Node.js and npm are installed
-if ! command -v node &>/dev/null; then
-  echo "[$(date)] ERROR: Node.js installation failed - command not found" >&2
-  exit 1
-fi
-if ! command -v npm &>/dev/null; then
-  echo "[$(date)] ERROR: npm installation failed - command not found" >&2
-  exit 1
-fi
-echo "[$(date)] Node.js installed: $(node --version)"
-echo "[$(date)] npm installed: $(npm --version)"
+command -v node &>/dev/null || fail "Node.js installation failed - command not found"
+command -v npm &>/dev/null || fail "npm installation failed - command not found"
+log "Node.js installed: $(node --version)"
+log "npm installed: $(npm --version)"
 
 # Install OpenClaw via npm
-echo "[$(date)] Installing OpenClaw from npm..."
-npm install -g openclaw@latest
-if ! command -v openclaw &>/dev/null; then
-  echo "[$(date)] ERROR: OpenClaw installation failed - command not found" >&2
-  exit 1
-fi
-echo "[$(date)] OpenClaw installed: $(openclaw --version)"
+log "Installing OpenClaw from npm..."
+npm install -g openclaw@latest --loglevel=warn 2>&1 | tail -5
+command -v openclaw &>/dev/null || fail "OpenClaw installation failed - command not found"
+log "OpenClaw installed: $(openclaw --version)"
 
 # Enable lingering for openclaw user (requires systemd-logind)
-echo "[$(date)] Enabling systemd lingering for openclaw user..."
+log "Enabling systemd lingering for openclaw user..."
 loginctl enable-linger openclaw
-echo "[$(date)] Lingering enabled"
+log "Lingering enabled"
 
 # Install OpenClaw daemon as user service
-echo "[$(date)] Installing OpenClaw daemon service..."
+log "Installing OpenClaw daemon service..."
 su - openclaw -c "export XDG_RUNTIME_DIR=/run/user/$(id -u) && openclaw daemon install"
 if ! su - openclaw -c "systemctl --user list-unit-files openclaw-gateway.service" &>/dev/null; then
-  echo "[$(date)] ERROR: OpenClaw service installation failed" >&2
-  exit 1
+  fail "OpenClaw service installation failed"
 fi
-echo "[$(date)] OpenClaw daemon service installed"
+log "OpenClaw daemon service installed"
 
 # Note: Service is NOT started automatically - user must run openclaw onboard first
-echo "[$(date)] OpenClaw installation completed successfully"
-echo "[$(date)] User must run: sudo -u openclaw openclaw onboard"
+log "OpenClaw installation completed successfully"
+log "User must run: sudo -u openclaw openclaw onboard"
 
 touch /root/.openclaw-installed
 EOINSTALL
@@ -731,6 +704,55 @@ virt-customize -q -a "$WORK_FILE" --run-command "chmod 644 /home/openclaw/SETUP_
 }
 msg_ok "Created setup instructions"
 
+# Create dynamic MOTD banner showing installation status
+msg_info "Creating login banner"
+virt-customize -q -a "$WORK_FILE" --run-command 'cat > /etc/update-motd.d/99-openclaw << "EOMOTD"
+#!/bin/bash
+echo ""
+echo "================================================================"
+echo "                 OpenClaw AI Agent VM"
+echo "================================================================"
+if [ -f /root/.openclaw-installed ]; then
+  echo "  Status: INSTALLED"
+  if command -v openclaw &>/dev/null; then
+    echo "  Version: $(openclaw --version 2>/dev/null || echo unknown)"
+  fi
+  if [ -f /home/openclaw/.openclaw/openclaw.json ]; then
+    echo "  Config: Configured"
+    SVC=$(su - openclaw -c "systemctl --user is-active openclaw-gateway 2>/dev/null" 2>/dev/null || echo "inactive")
+    echo "  Service: $SVC"
+  else
+    echo "  Config: NOT CONFIGURED"
+    echo ""
+    echo "  >>> Run: sudo -u openclaw openclaw onboard"
+  fi
+elif systemctl is-active --quiet install-openclaw.service 2>/dev/null; then
+  echo "  Status: INSTALLING (please wait ~4 minutes)"
+  echo ""
+  echo "  Monitor progress:"
+  echo "    tail -f /var/log/openclaw-install.log"
+else
+  STATUS=$(systemctl is-failed install-openclaw.service 2>/dev/null || echo "unknown")
+  if [ "$STATUS" = "failed" ]; then
+    echo "  Status: INSTALLATION FAILED"
+    echo ""
+    echo "  Check logs:"
+    echo "    cat /var/log/openclaw-install.log"
+    echo "  Retry:"
+    echo "    sudo /root/install-openclaw.sh"
+  else
+    echo "  Status: PENDING (waiting for first-boot service)"
+  fi
+fi
+echo "================================================================"
+echo ""
+EOMOTD
+chmod +x /etc/update-motd.d/99-openclaw' || {
+  msg_error "Failed to create login banner"
+  exit 1
+}
+msg_ok "Created login banner"
+
 # Finalize image
 msg_info "Finalizing image (hostname, SSH config)"
 virt-customize -q -a "$WORK_FILE" --hostname "${HN}" || {
@@ -889,28 +911,62 @@ fi
 post_update_to_api "done" "none"
 msg_ok "Completed successfully!\n"
 
+# ==============================================================================
+# IP ADDRESS DETECTION
+# ==============================================================================
+VM_IP=""
+if [ "$START_VM" == "yes" ]; then
+  msg_info "Waiting for VM to obtain IP address"
+  set +e
+  for i in {1..15}; do
+    VM_IP=$(qm guest cmd "$VMID" network-get-interfaces 2>/dev/null |
+      jq -r '.[] | select(.name != "lo") | ."ip-addresses"[]? | select(."ip-address-type" == "ipv4") | ."ip-address"' 2>/dev/null |
+      grep -v "^127\." | head -1) || true
+    [ -n "$VM_IP" ] && break
+    sleep 3
+  done
+  set -e
+  if [ -n "$VM_IP" ]; then
+    msg_ok "VM IP address: ${CL}${BL}${VM_IP}${CL}"
+  else
+    msg_ok "IP address not yet available (VM may still be booting)"
+  fi
+fi
+
+# ==============================================================================
+# FINAL OUTPUT
+# ==============================================================================
 echo -e "${INFO}${YW}===================================================================================${CL}"
 echo -e "${INFO}${YW}                     OpenClaw VM Setup Complete${CL}"
 echo -e "${INFO}${YW}===================================================================================${CL}"
 echo -e ""
 echo -e "${INFO}${GN}VM Configuration:${CL}"
+echo -e "${TAB}• VM ID: ${VMID}"
 echo -e "${TAB}• Machine: Q35 with UEFI"
 echo -e "${TAB}• CPU: Host type (passthrough)"
 echo -e "${TAB}• Memory: ${RAM_SIZE}MB (Ballooning disabled)"
 echo -e "${TAB}• Disk: ${DISK_SIZE}"
 echo -e "${TAB}• Gateway: 127.0.0.1:18789 (loopback only)"
+[ -n "$VM_IP" ] && echo -e "${TAB}• IP Address: ${VM_IP}"
 echo -e ""
 echo -e "${INFO}${RD}${BOLD}SSH Login Credentials (SAVE THESE!):${CL}"
 echo -e "${TAB}${BOLD}Username: ${BGN}root${CL}"
 echo -e "${TAB}${BOLD}Password: ${BGN}${ROOT_PASSWORD}${CL}"
+if [ -n "$VM_IP" ]; then
+  echo -e "${TAB}${BOLD}Command:  ${BGN}ssh root@${VM_IP}${CL}"
+fi
 echo -e ""
 echo -e "${INFO}${YW}Next Steps:${CL}"
-echo -e "${TAB}${GN}1.${CL} Wait for VM to boot and get IP address from Proxmox console"
-echo -e "${TAB}${GN}2.${CL} SSH into the VM: ${YW}ssh root@<VM-IP>${CL}"
-echo -e "${TAB}${GN}3.${CL} Read setup instructions: ${YW}cat /home/openclaw/SETUP_INSTRUCTIONS.txt${CL}"
-echo -e "${TAB}${GN}4.${CL} Configure AI provider: ${YW}sudo -u openclaw openclaw onboard${CL}"
-echo -e "${TAB}${GN}5.${CL} Setup Telegram bot and pair your account"
-echo -e "${TAB}${GN}6.${CL} Run security audit: ${YW}sudo -u openclaw openclaw security audit --deep${CL}"
+if [ -n "$VM_IP" ]; then
+  echo -e "${TAB}${GN}1.${CL} SSH into the VM: ${YW}ssh root@${VM_IP}${CL}"
+else
+  echo -e "${TAB}${GN}1.${CL} Wait for VM to boot and check IP in Proxmox console"
+  echo -e "${TAB}${GN}2.${CL} SSH into the VM: ${YW}ssh root@<VM-IP>${CL}"
+fi
+echo -e "${TAB}${GN}2.${CL} Wait for first-boot installation to complete (~4 min)"
+echo -e "${TAB}${GN}3.${CL} Configure AI provider: ${YW}sudo -u openclaw openclaw onboard${CL}"
+echo -e "${TAB}${GN}4.${CL} Setup Telegram bot and pair your account"
+echo -e "${TAB}${GN}5.${CL} Run security audit: ${YW}sudo -u openclaw openclaw security audit --deep${CL}"
 echo -e ""
 echo -e "${INFO}${YW}Security Note:${CL}"
 echo -e "${TAB}OpenClaw has shell access and sudo privileges within the VM."
