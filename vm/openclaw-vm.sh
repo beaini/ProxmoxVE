@@ -472,6 +472,13 @@ swapon /swapfile || {
 }
 echo "[$(date)] Swap file created and activated"
 
+# Sync system clock (critical for apt repository validation)
+echo "[$(date)] Syncing system clock..."
+systemctl restart systemd-timesyncd
+timedatectl set-ntp true
+sleep 2
+echo "[$(date)] System time: $(date)"
+
 # Verify network connectivity (fail immediately if no network)
 if ! curl -s --connect-timeout 5 https://registry.npmjs.org > /dev/null; then
   echo "[$(date)] ERROR: No network connectivity" >&2
@@ -481,23 +488,33 @@ echo "[$(date)] Network connectivity verified"
 
 # Setup NodeSource repository and install Node.js 24 (disk is now resized, so we have space)
 echo "[$(date)] Setting up NodeSource repository..."
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash - || {
-  echo "[$(date)] ERROR: Failed to setup NodeSource repository" >&2
+if curl -fsSL https://deb.nodesource.com/setup_24.x | bash -; then
+  echo "[$(date)] NodeSource repository configured"
+else
+  echo "[$(date)] WARNING: NodeSource setup failed, will use Ubuntu's nodejs package" >&2
+fi
+
+echo "[$(date)] Installing Node.js and npm..."
+apt-get install -y nodejs npm || {
+  echo "[$(date)] ERROR: Failed to install Node.js/npm" >&2
   exit 1
 }
-echo "[$(date)] Installing Node.js 24..."
-apt-get install -y nodejs || {
-  echo "[$(date)] ERROR: Failed to install Node.js" >&2
-  exit 1
-}
+
 # Clean apt cache to free disk space before npm install
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+# Verify Node.js and npm are installed
 if ! command -v node &>/dev/null; then
   echo "[$(date)] ERROR: Node.js installation failed - command not found" >&2
   exit 1
 fi
+if ! command -v npm &>/dev/null; then
+  echo "[$(date)] ERROR: npm installation failed - command not found" >&2
+  exit 1
+fi
 echo "[$(date)] Node.js installed: $(node --version)"
+echo "[$(date)] npm installed: $(npm --version)"
 
 # Install OpenClaw via npm
 echo "[$(date)] Installing OpenClaw from npm..."
