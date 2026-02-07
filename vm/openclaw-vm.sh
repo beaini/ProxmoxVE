@@ -443,7 +443,7 @@ msg_ok "Created OpenClaw user"
 
 # Create first-boot installation script
 msg_info "Creating first-boot OpenClaw installation script"
-virt-customize -q -a "$WORK_FILE" --run-command 'cat > /root/install-openclaw.sh << '\''EOINSTALL'\''
+virt-customize -q -a "$WORK_FILE" --run-command 'cat > /root/install-openclaw.sh << "EOINSTALL"
 #!/bin/bash
 set -euo pipefail
 
@@ -477,7 +477,7 @@ echo "[$(date)] Syncing system clock..."
 systemctl restart systemd-timesyncd
 timedatectl set-ntp true
 sleep 2
-echo "[$(date)] System time: $(date)"
+echo "[$(date)] System time after sync: $(date)"
 
 # Verify network connectivity (fail immediately if no network)
 if ! curl -s --connect-timeout 5 https://registry.npmjs.org > /dev/null; then
@@ -491,7 +491,7 @@ echo "[$(date)] Setting up NodeSource repository..."
 if curl -fsSL https://deb.nodesource.com/setup_24.x | bash -; then
   echo "[$(date)] NodeSource repository configured"
 else
-  echo "[$(date)] WARNING: NodeSource setup failed, will use Ubuntu's nodejs package" >&2
+  echo "[$(date)] WARNING: NodeSource setup failed, will use Ubuntu nodejs package" >&2
 fi
 
 echo "[$(date)] Installing Node.js and npm..."
@@ -532,8 +532,8 @@ echo "[$(date)] Lingering enabled"
 
 # Install OpenClaw daemon as user service
 echo "[$(date)] Installing OpenClaw daemon service..."
-su - openclaw -c '\''export XDG_RUNTIME_DIR=/run/user/$(id -u) && openclaw daemon install'\''
-if ! su - openclaw -c '\''systemctl --user list-unit-files openclaw-gateway.service'\'' &>/dev/null; then
+su - openclaw -c "export XDG_RUNTIME_DIR=/run/user/$(id -u) && openclaw daemon install"
+if ! su - openclaw -c "systemctl --user list-unit-files openclaw-gateway.service" &>/dev/null; then
   echo "[$(date)] ERROR: OpenClaw service installation failed" >&2
   exit 1
 fi
@@ -544,20 +544,16 @@ echo "[$(date)] OpenClaw installation completed successfully"
 echo "[$(date)] User must run: sudo -u openclaw openclaw onboard"
 
 touch /root/.openclaw-installed
-EOINSTALL' || {
+EOINSTALL
+chmod +x /root/install-openclaw.sh' || {
   msg_error "Failed to create first-boot installation script"
-  exit 1
-}
-
-virt-customize -q -a "$WORK_FILE" --run-command "chmod +x /root/install-openclaw.sh" || {
-  msg_error "Failed to set script permissions"
   exit 1
 }
 msg_ok "Created first-boot installation script"
 
 # Create systemd unit for first-boot installation
 msg_info "Creating first-boot systemd unit"
-virt-customize -q -a "$WORK_FILE" --run-command 'cat > /etc/systemd/system/install-openclaw.service << '\''EOSERVICE'\''
+virt-customize -q -a "$WORK_FILE" --run-command 'cat > /etc/systemd/system/install-openclaw.service << "EOSERVICE"
 [Unit]
 Description=Install OpenClaw on First Boot
 After=network-online.target
@@ -586,7 +582,7 @@ msg_ok "Created and enabled first-boot systemd unit"
 
 # Create setup instructions
 msg_info "Creating setup instructions"
-virt-customize -q -a "$WORK_FILE" --run-command 'cat > /home/openclaw/SETUP_INSTRUCTIONS.txt << '\''EOINSTRUCTIONS'\''
+virt-customize -q -a "$WORK_FILE" --run-command 'cat > /home/openclaw/SETUP_INSTRUCTIONS.txt << "EOINSTRUCTIONS"
 ================================================================================
                         OpenClaw Setup Instructions
 ================================================================================
@@ -642,7 +638,7 @@ PAIRING YOUR TELEGRAM ACCOUNT
 ================================================================================
 
 1. Send any message to your bot in Telegram
-   You'\''ll receive a pairing code
+   You will receive a pairing code
 
 2. Approve the pairing on the server:
 
@@ -717,6 +713,7 @@ EOINSTRUCTIONS' || {
   msg_error "Failed to create setup instructions"
   exit 1
 }
+
 
 virt-customize -q -a "$WORK_FILE" --run-command "chown openclaw:openclaw /home/openclaw/SETUP_INSTRUCTIONS.txt" || {
   msg_error "Failed to set instructions ownership"
