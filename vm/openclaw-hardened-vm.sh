@@ -470,22 +470,57 @@ if ! curl -s --connect-timeout 10 https://github.com > /dev/null; then
 fi
 log "Network connectivity verified"
 
-# Run the official openclaw-ansible installer
-# Source: https://github.com/openclaw/openclaw-ansible
-log "Running openclaw-ansible installer (this takes 10-15 minutes)..."
-log "Installing: Ansible, UFW, Fail2ban, Tailscale, Docker, Node.js, pnpm, OpenClaw"
+# --------------------------------------------------------------------------
+# openclaw-ansible requires a non-root user because Homebrew refuses root.
+# The upstream install.sh uses --ask-become-pass for non-root (interactive),
+# so we replicate its steps with NOPASSWD sudo for unattended installation.
+# --------------------------------------------------------------------------
 
-curl -fsSL https://raw.githubusercontent.com/openclaw/openclaw-ansible/main/install.sh | bash 2>&1 || {
-  fail "openclaw-ansible installer failed"
+# Create clawdbot user with NOPASSWD sudo (the ansible playbook also creates
+# this user, but we need it to exist before running the playbook)
+log "Creating clawdbot user for ansible execution..."
+if ! id clawdbot &>/dev/null; then
+  useradd -m -s /bin/bash clawdbot || fail "Failed to create clawdbot user"
+fi
+echo 'clawdbot ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/clawdbot
+chmod 0440 /etc/sudoers.d/clawdbot
+log "clawdbot user ready with NOPASSWD sudo"
+
+# Install ansible and git as root (prerequisites for the playbook)
+log "Installing Ansible and Git..."
+apt-get update -qq
+apt-get install -y -qq ansible git > /dev/null 2>&1 || fail "Failed to install ansible/git"
+log "Ansible installed: $(ansible --version | head -1)"
+
+# Run the openclaw-ansible playbook as clawdbot (non-root) so Homebrew works.
+# Use --become (sudo) for tasks that need root — NOPASSWD handles the rest.
+log "Running openclaw-ansible playbook (this takes 10-15 minutes)..."
+log "Installing: UFW, Fail2ban, Tailscale, Docker, Homebrew, Node.js, pnpm, OpenClaw"
+
+su - clawdbot -c '
+  set -e
+  export TERM=xterm-256color
+  export DEBIAN_FRONTEND=noninteractive
+
+  TEMP_DIR=$(mktemp -d)
+  cd "$TEMP_DIR"
+  git clone https://github.com/pasogott/clawdbot-ansible.git 2>&1
+  cd clawdbot-ansible
+
+  ansible-galaxy collection install -r requirements.yml 2>&1
+  ansible-playbook playbook.yml --connection local --become 2>&1
+
+  cd /
+  rm -rf "$TEMP_DIR"
+' 2>&1 || {
+  fail "openclaw-ansible playbook failed"
 }
 
 log "openclaw-ansible installation completed"
 
 # Verify OpenClaw is installed
-if command -v clawdbot &>/dev/null; then
-  log "OpenClaw installed: $(clawdbot --version 2>/dev/null || echo unknown)"
-elif su - clawdbot -c "command -v clawdbot" &>/dev/null; then
-  log "OpenClaw installed for clawdbot user: $(su - clawdbot -c 'clawdbot --version 2>/dev/null' || echo unknown)"
+if su - clawdbot -c "command -v clawdbot" &>/dev/null; then
+  log "OpenClaw installed: $(su - clawdbot -c 'clawdbot --version 2>/dev/null' || echo unknown)"
 else
   log "WARNING: clawdbot command not found in PATH (may need login shell)"
 fi
