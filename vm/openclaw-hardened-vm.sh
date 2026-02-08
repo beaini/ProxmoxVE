@@ -504,8 +504,8 @@ while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/li
     log "Another apt process is running (likely unattended-upgrades), waiting..."
   fi
   LOCK_WAIT=$((LOCK_WAIT + 1))
-  if [ $LOCK_WAIT -gt 120 ]; then
-    fail "Timed out waiting for apt lock after 120 seconds"
+  if [ $LOCK_WAIT -gt 600 ]; then
+    fail "Timed out waiting for apt lock after 600 seconds"
   fi
   sleep 1
 done
@@ -577,7 +577,7 @@ SERVICE_FILE=$(mktemp)
 cat > "$SERVICE_FILE" << 'EOSERVICE'
 [Unit]
 Description=Install OpenClaw (Hardened) on First Boot
-After=network-online.target
+After=network-online.target cloud-final.service apt-daily.service apt-daily-upgrade.service
 Wants=network-online.target
 ConditionPathExists=!/root/.openclaw-installed
 
