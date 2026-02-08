@@ -493,9 +493,11 @@ chmod 0440 /etc/sudoers.d/clawdbot
 log "clawdbot user ready with NOPASSWD sudo"
 
 # Install ansible and git as root (prerequisites for the playbook)
+# apt lists were cleaned during image build to save space, so update is required
+log "Refreshing apt package index..."
+apt-get update -q || fail "apt-get update failed"
 log "Installing Ansible and Git..."
-apt-get update -qq
-apt-get install -y -qq ansible git > /dev/null 2>&1 || fail "Failed to install ansible/git"
+apt-get install -y -q ansible git || fail "Failed to install ansible/git"
 log "Ansible installed: $(ansible --version | head -1)"
 
 # Run the openclaw-ansible playbook as clawdbot (non-root) so Homebrew works.
