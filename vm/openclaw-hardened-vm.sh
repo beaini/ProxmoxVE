@@ -569,7 +569,7 @@ SERVICE_FILE=$(mktemp)
 cat > "$SERVICE_FILE" << 'EOSERVICE'
 [Unit]
 Description=Install OpenClaw (Hardened) on First Boot
-After=network-online.target cloud-final.service apt-daily.service apt-daily-upgrade.service
+After=network-online.target cloud-final.service
 Wants=network-online.target
 ConditionPathExists=!/root/.openclaw-installed
 
