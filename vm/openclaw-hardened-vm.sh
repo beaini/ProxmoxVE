@@ -430,7 +430,10 @@ msg_ok "Configured swap fstab entry"
 # FIRST-BOOT SCRIPT (uses openclaw-ansible)
 # ==============================================================================
 msg_info "Creating first-boot installation script (openclaw-ansible)"
-virt-customize -q -a "$WORK_FILE" --run-command 'cat > /root/install-openclaw.sh << "EOINSTALL"
+
+# Create script in temporary file to avoid command line length limits
+INSTALL_SCRIPT=$(mktemp)
+cat > "$INSTALL_SCRIPT" << 'EOINSTALL'
 #!/bin/bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
@@ -490,15 +493,23 @@ log "Then run onboarding: clawdbot onboard --install-daemon"
 
 touch /root/.openclaw-installed
 EOINSTALL
-chmod +x /root/install-openclaw.sh' || {
+
+# Upload script to VM image and make it executable
+virt-customize -q -a "$WORK_FILE" \
+  --upload "$INSTALL_SCRIPT:/root/install-openclaw.sh" \
+  --chmod 0755:/root/install-openclaw.sh || {
+  rm -f "$INSTALL_SCRIPT"
   msg_error "Failed to create first-boot installation script"
   exit 1
 }
+rm -f "$INSTALL_SCRIPT"
 msg_ok "Created first-boot installation script"
 
 # Create systemd unit for first-boot installation
 msg_info "Creating first-boot systemd unit"
-virt-customize -q -a "$WORK_FILE" --run-command 'cat > /etc/systemd/system/install-openclaw.service << "EOSERVICE"
+
+SERVICE_FILE=$(mktemp)
+cat > "$SERVICE_FILE" << 'EOSERVICE'
 [Unit]
 Description=Install OpenClaw (Hardened) on First Boot
 After=network-online.target
@@ -515,20 +526,23 @@ TimeoutStartSec=1200
 
 [Install]
 WantedBy=multi-user.target
-EOSERVICE' || {
-  msg_error "Failed to create systemd unit"
-  exit 1
-}
+EOSERVICE
 
-virt-customize -q -a "$WORK_FILE" --run-command "systemctl enable install-openclaw.service" || {
-  msg_error "Failed to enable first-boot service"
+virt-customize -q -a "$WORK_FILE" \
+  --upload "$SERVICE_FILE:/etc/systemd/system/install-openclaw.service" \
+  --run-command "systemctl enable install-openclaw.service" || {
+  rm -f "$SERVICE_FILE"
+  msg_error "Failed to create and enable systemd unit"
   exit 1
 }
+rm -f "$SERVICE_FILE"
 msg_ok "Created and enabled first-boot systemd unit"
 
 # Create setup instructions
 msg_info "Creating setup instructions"
-virt-customize -q -a "$WORK_FILE" --run-command 'cat > /root/SETUP_INSTRUCTIONS.txt << "EOINSTRUCTIONS"
+
+INSTRUCTIONS_FILE=$(mktemp)
+cat > "$INSTRUCTIONS_FILE" << 'EOINSTRUCTIONS'
 ================================================================================
                   OpenClaw Hardened VM - Setup Instructions
 ================================================================================
@@ -696,20 +710,23 @@ MORE INFORMATION
     Documentation:    https://docs.openclaw.ai
 
 ================================================================================
-EOINSTRUCTIONS' || {
+EOINSTRUCTIONS
+
+virt-customize -q -a "$WORK_FILE" \
+  --upload "$INSTRUCTIONS_FILE:/root/SETUP_INSTRUCTIONS.txt" \
+  --chmod 0644:/root/SETUP_INSTRUCTIONS.txt || {
+  rm -f "$INSTRUCTIONS_FILE"
   msg_error "Failed to create setup instructions"
   exit 1
 }
-
-virt-customize -q -a "$WORK_FILE" --run-command "chmod 644 /root/SETUP_INSTRUCTIONS.txt" || {
-  msg_error "Failed to set instructions permissions"
-  exit 1
-}
+rm -f "$INSTRUCTIONS_FILE"
 msg_ok "Created setup instructions"
 
 # Create dynamic MOTD banner showing installation status
 msg_info "Creating login banner"
-virt-customize -q -a "$WORK_FILE" --run-command 'cat > /etc/update-motd.d/99-openclaw << "EOMOTD"
+
+MOTD_FILE=$(mktemp)
+cat > "$MOTD_FILE" << 'EOMOTD'
 #!/bin/bash
 echo ""
 echo "================================================================"
@@ -760,10 +777,15 @@ fi
 echo "================================================================"
 echo ""
 EOMOTD
-chmod +x /etc/update-motd.d/99-openclaw' || {
+
+virt-customize -q -a "$WORK_FILE" \
+  --upload "$MOTD_FILE:/etc/update-motd.d/99-openclaw" \
+  --chmod 0755:/etc/update-motd.d/99-openclaw || {
+  rm -f "$MOTD_FILE"
   msg_error "Failed to create login banner"
   exit 1
 }
+rm -f "$MOTD_FILE"
 msg_ok "Created login banner"
 
 # Finalize image
