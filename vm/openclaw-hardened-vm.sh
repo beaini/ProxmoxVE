@@ -450,12 +450,18 @@ fail() { echo "[$(date)] ERROR: $1" >&2; exit 1; }
 log "Starting OpenClaw Hardened installation (via openclaw-ansible)"
 
 # Create 2GB swap file (disk is now resized, so we have space)
-log "Creating 2GB swap file..."
-fallocate -l 2G /swapfile || fail "Failed to create swap file"
-chmod 600 /swapfile || fail "Failed to set swap permissions"
-mkswap /swapfile >/dev/null || fail "Failed to format swap"
-swapon /swapfile || fail "Failed to activate swap"
-log "Swap file created and activated"
+# The fstab entry is pre-configured, so systemd may have already activated swap.
+if swapon --show | grep -q '/swapfile'; then
+  log "Swap file already active (mounted via fstab)"
+else
+  log "Creating 2GB swap file..."
+  swapoff /swapfile 2>/dev/null || true
+  fallocate -l 2G /swapfile || fail "Failed to create swap file"
+  chmod 600 /swapfile || fail "Failed to set swap permissions"
+  mkswap /swapfile >/dev/null || fail "Failed to format swap"
+  swapon /swapfile || fail "Failed to activate swap"
+  log "Swap file created and activated"
+fi
 
 # Sync system clock (critical for apt repository validation)
 log "Syncing system clock..."
