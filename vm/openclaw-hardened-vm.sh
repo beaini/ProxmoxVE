@@ -477,23 +477,20 @@ fi
 log "Network connectivity verified"
 
 # --------------------------------------------------------------------------
-# openclaw-ansible requires a non-root user because Homebrew refuses root.
-# The upstream install.sh uses --ask-become-pass for non-root (interactive),
-# so we replicate its steps with NOPASSWD sudo for unattended installation.
+# The upstream openclaw-ansible installer is designed to run as root
+# (using -e ansible_become=false). However, its Homebrew task refuses root.
+# Strategy: pre-install Homebrew as a non-root user, then run the full
+# installer as root. The playbook's Homebrew task checks for the binary
+# and skips if it already exists.
 # --------------------------------------------------------------------------
 
-# Create clawdbot user with NOPASSWD sudo (the ansible playbook also creates
-# this user, but we need it to exist before running the playbook)
-log "Creating clawdbot user for ansible execution..."
+# Create clawdbot user (the ansible playbook also creates this user,
+# but we need it now to install Homebrew before the playbook runs)
+log "Creating clawdbot user..."
 if ! id clawdbot &>/dev/null; then
   useradd -m -s /bin/bash clawdbot || fail "Failed to create clawdbot user"
 fi
-echo 'clawdbot ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/clawdbot
-chmod 0440 /etc/sudoers.d/clawdbot
-log "clawdbot user ready with NOPASSWD sudo"
-
-# Install ansible and git as root (prerequisites for the playbook)
-# apt lists were cleaned during image build to save space, so update is required
+log "clawdbot user created"
 
 # Wait for any automatic apt processes (unattended-upgrades, apt-daily) to finish.
 # Ubuntu cloud images run these on first boot and hold the dpkg lock.
@@ -515,32 +512,27 @@ fi
 
 log "Refreshing apt package index..."
 apt-get update -q || fail "apt-get update failed"
-log "Installing Ansible and Git..."
-apt-get install -y -q ansible git || fail "Failed to install ansible/git"
-log "Ansible installed: $(ansible --version | head -1)"
 
-# Run the openclaw-ansible playbook as clawdbot (non-root) so Homebrew works.
-# Use --become (sudo) for tasks that need root — NOPASSWD handles the rest.
-log "Running openclaw-ansible playbook (this takes 10-15 minutes)..."
-log "Installing: UFW, Fail2ban, Tailscale, Docker, Homebrew, Node.js, pnpm, OpenClaw"
+# Pre-install Homebrew as clawdbot (Homebrew refuses to run as root).
+# The ansible playbook checks for /home/linuxbrew/.linuxbrew/bin/brew
+# and skips installation if it exists.
+if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+  log "Pre-installing Homebrew as clawdbot user (Homebrew refuses root)..."
+  su - clawdbot -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' 2>&1 || {
+    fail "Homebrew installation failed"
+  }
+  log "Homebrew installed at /home/linuxbrew/.linuxbrew/bin/brew"
+else
+  log "Homebrew already installed, skipping"
+fi
 
-su - clawdbot -c '
-  set -e
-  export TERM=xterm-256color
-  export DEBIAN_FRONTEND=noninteractive
+# Run the upstream openclaw-ansible installer as root (the designed path).
+# Homebrew is already installed so the playbook will skip that task.
+log "Running openclaw-ansible installer (this takes 10-15 minutes)..."
+log "Installing: Ansible, UFW, Fail2ban, Tailscale, Docker, Node.js, pnpm, OpenClaw"
 
-  TEMP_DIR=$(mktemp -d)
-  cd "$TEMP_DIR"
-  git clone https://github.com/pasogott/clawdbot-ansible.git 2>&1
-  cd clawdbot-ansible
-
-  ansible-galaxy collection install -r requirements.yml 2>&1
-  ansible-playbook playbook.yml --connection local --become 2>&1
-
-  cd /
-  rm -rf "$TEMP_DIR"
-' 2>&1 || {
-  fail "openclaw-ansible playbook failed"
+curl -fsSL https://raw.githubusercontent.com/openclaw/openclaw-ansible/main/install.sh | bash 2>&1 || {
+  fail "openclaw-ansible installer failed"
 }
 
 log "openclaw-ansible installation completed"
