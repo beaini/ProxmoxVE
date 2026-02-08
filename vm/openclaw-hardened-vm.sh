@@ -437,6 +437,9 @@ cat > "$INSTALL_SCRIPT" << 'EOINSTALL'
 #!/bin/bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+export HOME=/root
+export USER=root
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Log to file
 exec > >(tee /var/log/openclaw-install.log) 2>&1
@@ -518,6 +521,10 @@ ConditionPathExists=!/root/.openclaw-installed
 
 [Service]
 Type=oneshot
+Environment="HOME=/root"
+Environment="USER=root"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="DEBIAN_FRONTEND=noninteractive"
 ExecStart=/root/install-openclaw.sh
 RemainAfterExit=yes
 StandardOutput=journal
