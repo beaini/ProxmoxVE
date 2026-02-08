@@ -494,6 +494,25 @@ log "clawdbot user ready with NOPASSWD sudo"
 
 # Install ansible and git as root (prerequisites for the playbook)
 # apt lists were cleaned during image build to save space, so update is required
+
+# Wait for any automatic apt processes (unattended-upgrades, apt-daily) to finish.
+# Ubuntu cloud images run these on first boot and hold the dpkg lock.
+log "Waiting for apt locks to be released..."
+LOCK_WAIT=0
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+  if [ $LOCK_WAIT -eq 0 ]; then
+    log "Another apt process is running (likely unattended-upgrades), waiting..."
+  fi
+  LOCK_WAIT=$((LOCK_WAIT + 1))
+  if [ $LOCK_WAIT -gt 120 ]; then
+    fail "Timed out waiting for apt lock after 120 seconds"
+  fi
+  sleep 1
+done
+if [ $LOCK_WAIT -gt 0 ]; then
+  log "Apt lock released after ${LOCK_WAIT}s"
+fi
+
 log "Refreshing apt package index..."
 apt-get update -q || fail "apt-get update failed"
 log "Installing Ansible and Git..."
