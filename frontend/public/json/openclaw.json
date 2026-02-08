@@ -26,6 +26,17 @@
         "os": "ubuntu",
         "version": "24.04"
       }
+    },
+    {
+      "type": "hardened",
+      "script": "vm/openclaw-hardened-vm.sh",
+      "resources": {
+        "cpu": 2,
+        "ram": 4096,
+        "hdd": 32,
+        "os": "ubuntu",
+        "version": "24.04"
+      }
     }
   ],
   "default_credentials": {
@@ -55,6 +66,10 @@
     },
     {
       "text": "Setup instructions are available at /home/openclaw/SETUP_INSTRUCTIONS.txt inside the VM.",
+      "type": "info"
+    },
+    {
+      "text": "Hardened install uses openclaw-ansible (UFW, Fail2ban, Tailscale, Docker). Takes ~10-15 min on first boot. User is 'clawdbot'. Run: sudo su - clawdbot && clawdbot onboard --install-daemon",
       "type": "info"
     }
   ]
